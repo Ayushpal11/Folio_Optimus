@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pypfopt import EfficientFrontier, risk_models, expected_returns
 
-from data.fetcher import fetch_stock_meta, fetch_returns, compute_annualised_stats, fetch_price_history
+from data.fetcher import normalize_symbol, fetch_stock_meta, fetch_returns, compute_annualised_stats, fetch_price_history
 
 import uvicorn
 
@@ -20,7 +20,11 @@ app = FastAPI(title="Portfolio Optimizer API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://folio-optimus.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,13 +56,15 @@ def optimize(req: OptimizeRequest):
 def get_stock_info(ticker: str):
     """Single stock metadata + 1Y stats."""
     try:
-        meta    = fetch_stock_meta(ticker)
-        returns, _ = fetch_returns([ticker], period="1y")
-        stats   = compute_annualised_stats(returns)
+        symbol = normalize_symbol(ticker)
+        meta = fetch_stock_meta(symbol)
+        returns, valid_tickers, invalid_tickers = fetch_returns([symbol], period="1y")
+        resolved_symbol = valid_tickers[0]
+        stats = compute_annualised_stats(returns)
         return {
             **meta,
-            "annualised_return":     round(stats["annualised_return"][ticker.upper()], 4),
-            "annualised_volatility": round(stats["annualised_volatility"][ticker.upper()], 4),
+            "annualised_return":     round(stats["annualised_return"][resolved_symbol], 4),
+            "annualised_volatility": round(stats["annualised_volatility"][resolved_symbol], 4),
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -72,13 +78,18 @@ def get_price_history(ticker: str, period: str = "1y"):
     Example: GET /api/price-history/RELIANCE.NS
     """
     try:
-        df = fetch_price_history(ticker.upper(), period)
-        prices = df[ticker.upper()].dropna().round(2).tolist()
-        dates  = df.index.strftime("%Y-%m-%d").tolist()
+        symbol = normalize_symbol(ticker)
+        df = fetch_price_history(symbol, period)
+        if df.empty:
+            raise ValueError(f"No price history found for ticker: {ticker}")
+
+        resolved_symbol = df.columns[0]
+        prices = df[resolved_symbol].dropna().round(2).tolist()
+        dates = df.index.strftime("%Y-%m-%d").tolist()
         return {
-            "ticker": ticker.upper(),
+            "ticker": resolved_symbol,
             "prices": prices,
-            "dates":  dates,
+            "dates": dates,
             "period": period,
         }
     except ValueError as e:
@@ -89,20 +100,26 @@ def get_price_history(ticker: str, period: str = "1y"):
 @app.post("/api/batch-stats")
 def get_batch_stats(req: dict):
     """Returns returns matrix + stats for a list of tickers."""
-    tickers = [t.strip().upper() for t in req.get("tickers", [])]
-    if not tickers:
+    raw_tickers = [t.strip() for t in req.get("tickers", []) if t and t.strip()]
+    if not raw_tickers:
         raise HTTPException(status_code=400, detail="No tickers provided")
+
+    tickers = [normalize_symbol(t) for t in raw_tickers]
     try:
-        returns, valid_tickers = fetch_returns(tickers, period="1y")
-        stats   = compute_annualised_stats(returns)
-        corr    = returns.corr().round(4).to_dict()
-        return {
+        returns, valid_tickers, invalid_tickers = fetch_returns(tickers, period="1y")
+        stats = compute_annualised_stats(returns)
+        corr = returns.corr().round(4).to_dict()
+        response = {
             "tickers":               valid_tickers,
+            "invalid_tickers":       invalid_tickers,
             "annualised_return":     {k: round(v, 4) for k, v in stats["annualised_return"].items()},
             "annualised_volatility": {k: round(v, 4) for k, v in stats["annualised_volatility"].items()},
             "correlation_matrix":    corr,
             "data_points":           len(returns),
         }
+        if invalid_tickers:
+            response["warning"] = f"Some tickers were invalid or had no valid history: {', '.join(invalid_tickers)}"
+        return response
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
