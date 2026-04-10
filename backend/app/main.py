@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pypfopt import EfficientFrontier, risk_models, expected_returns
 
-from data.fetcher import fetch_stock_meta, fetch_returns, compute_annualised_stats
+from data.fetcher import fetch_stock_meta, fetch_returns, compute_annualised_stats, fetch_price_history
 
 import uvicorn
 
@@ -53,7 +53,7 @@ def get_stock_info(ticker: str):
     """Single stock metadata + 1Y stats."""
     try:
         meta    = fetch_stock_meta(ticker)
-        returns = fetch_returns([ticker], period="1y")
+        returns, _ = fetch_returns([ticker], period="1y")
         stats   = compute_annualised_stats(returns)
         return {
             **meta,
@@ -65,6 +65,26 @@ def get_stock_info(ticker: str):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Data fetch failed: {str(e)}")
 
+@app.get("/api/price-history/{ticker}")
+def get_price_history(ticker: str, period: str = "1y"):
+    """
+    Returns a flat list of daily closing prices for sparkline charts.
+    Example: GET /api/price-history/RELIANCE.NS
+    """
+    try:
+        df = fetch_price_history(ticker.upper(), period)
+        prices = df[ticker.upper()].dropna().round(2).tolist()
+        dates  = df.index.strftime("%Y-%m-%d").tolist()
+        return {
+            "ticker": ticker.upper(),
+            "prices": prices,
+            "dates":  dates,
+            "period": period,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Price history fetch failed: {str(e)}")
 
 @app.post("/api/batch-stats")
 def get_batch_stats(req: dict):
@@ -73,11 +93,11 @@ def get_batch_stats(req: dict):
     if not tickers:
         raise HTTPException(status_code=400, detail="No tickers provided")
     try:
-        returns = fetch_returns(tickers, period="1y")
+        returns, valid_tickers = fetch_returns(tickers, period="1y")
         stats   = compute_annualised_stats(returns)
         corr    = returns.corr().round(4).to_dict()
         return {
-            "tickers":               tickers,
+            "tickers":               valid_tickers,
             "annualised_return":     {k: round(v, 4) for k, v in stats["annualised_return"].items()},
             "annualised_volatility": {k: round(v, 4) for k, v in stats["annualised_volatility"].items()},
             "correlation_matrix":    corr,

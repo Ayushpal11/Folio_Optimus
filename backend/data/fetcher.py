@@ -24,32 +24,37 @@ def fetch_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     df = t.history(period=period, auto_adjust=True)
 
     if df.empty:
-        raise ValueError(f"No price data found for ticker: {ticker}")
+        return pd.DataFrame()  # Return empty DataFrame instead of raising
 
     result = df[["Close"]].rename(columns={"Close": ticker})
     _price_cache[key] = result
     return result
 
-def fetch_returns(tickers: list[str], period: str = "1y") -> pd.DataFrame:
-    """Returns a DataFrame of daily % returns for all tickers."""
+def fetch_returns(tickers: list[str], period: str = "1y") -> tuple[pd.DataFrame, list[str]]:
+    """Returns a DataFrame of daily % returns for valid tickers and list of valid tickers."""
     frames = []
+    valid_tickers = []
     for t in tickers:
         prices = fetch_price_history(t, period)
-        frames.append(prices)
+        if not prices.empty:
+            frames.append(prices)
+            valid_tickers.append(t.upper())
 
-    combined = pd.concat(frames, axis=1).dropna()
+    if not frames:
+        raise ValueError("No valid price data found for any ticker")
+
+    combined = pd.concat(frames, axis=1).dropna(how="all")
+    if combined.empty:
+        raise ValueError("No overlapping price data found")
+
     returns = combined.pct_change().dropna()
-    return returns
+    return returns, valid_tickers
 
+@cached(_meta_cache, key=lambda ticker: hashkey(ticker))
 def fetch_stock_meta(ticker: str) -> dict:
-    """Returns name, sector, current price, 52w high/low, market cap."""
-    key = hashkey(ticker, "meta")
-    if key in _meta_cache:
-        return _meta_cache[key]
-
+    """Returns metadata for a ticker."""
     t = _get_ticker_obj(ticker)
     info = t.info
-
     result = {
         "ticker":        ticker.upper(),
         "name":          info.get("longName", ticker),
@@ -63,7 +68,6 @@ def fetch_stock_meta(ticker: str) -> dict:
         "currency":      info.get("currency", "USD"),
     }
 
-    _meta_cache[key] = result
     return result
 
 def compute_annualised_stats(returns: pd.DataFrame) -> dict:
@@ -74,16 +78,3 @@ def compute_annualised_stats(returns: pd.DataFrame) -> dict:
         "annualised_return": ann_return.to_dict(),
         "annualised_volatility": ann_vol.to_dict(),
     }
-    
-def fetch_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """Returns daily adjusted close prices. Used for sparklines."""
-    key = hashkey(ticker, period)
-    if key in _price_cache:
-        return _price_cache[key]
-    t  = _get_ticker_obj(ticker)
-    df = t.history(period=period, auto_adjust=True)
-    if df.empty:
-        raise ValueError(f"No price data found for ticker: {ticker}")
-    result = df[["Close"]].rename(columns={"Close": ticker})
-    _price_cache[key] = result
-    return result
