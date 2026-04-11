@@ -35,6 +35,10 @@ class OptimizeRequest(BaseModel):
     capital: float
     risk_tolerance: str = "medium"  # low / medium / high
 
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Portfolio Optimizer API. Use /api/* endpoints."}
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "0.1.0"}
@@ -126,4 +130,5 @@ def get_batch_stats(req: dict):
         raise HTTPException(status_code=502, detail=f"Batch fetch failed: {str(e)}")
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
