@@ -5,7 +5,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
  
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const PROD_BACKEND_URL = "https://folio-optimus.onrender.com";
+const API = import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" ? PROD_BACKEND_URL : "http://localhost:8000");
  
 // ── Indian Nifty index constituent presets ──────────────────────────────────
 const INDEX_PRESETS = {
@@ -182,7 +183,7 @@ export default function App() {
  
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div style={{
+<div className="app-shell" style={{
       minHeight: "100vh", background: "#0a0e1a", color: "#f0f0f0",
       fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
     }}>
@@ -190,6 +191,8 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; }
+        html, body, #root { min-height: 100%; }
+        body { margin: 0; }
         ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0a0e1a; }
         ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 3px; }
         input, select, button { font-family: inherit; }
@@ -197,7 +200,9 @@ export default function App() {
         th { color: #6b7280; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; padding: 8px 12px; border-bottom: 1px solid #1f2937; text-align: left; }
         td { padding: 10px 12px; border-bottom: 1px solid #111827; font-size: 13px; }
         tr:hover td { background: #111827; }
-        .tab-btn { background: none; border: none; color: #6b7280; padding: "10px 20px"; cursor: pointer; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; border-bottom: 2px solid transparent; transition: all .2s; }
+        .header-row { padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+        .tab-row { padding: 0 32px; border-bottom: 1px solid #1f2937; display: flex; gap: 4px; flex-wrap: wrap; }
+        .tab-btn { background: none; border: none; color: #6b7280; padding: 10px 20px; cursor: pointer; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; border-bottom: 2px solid transparent; transition: all .2s; }
         .tab-btn.active { color: #00d4aa; border-bottom-color: #00d4aa; }
         .tab-btn:hover { color: #f0f0f0; }
         .lookup-btn { background: #00d4aa; color: #0a0e1a; border: none; border-radius: 8px; padding: 10px 22px; cursor: pointer; font-weight: 700; font-size: 13px; transition: opacity .2s; }
@@ -207,11 +212,41 @@ export default function App() {
         .preset-btn { background: #111827; border: 1px solid #1f2937; color: #9ca3af; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 12px; transition: all .2s; white-space: nowrap; }
         .preset-btn.active { background: #00d4aa22; border-color: #00d4aa; color: #00d4aa; }
         .preset-btn:hover { border-color: #374151; color: #f0f0f0; }
-        .card { background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 20px; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 20px; min-width: 0; }
+        .page-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+        .search-row { display: flex; gap: 10px; margin-bottom: 24px; align-items: center; flex-wrap: wrap; }
+        .preset-group { display: flex; gap: 6px; flex-wrap: wrap; }
+        .stat-grid { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .chart-grid { display: grid; grid-template-columns: 1fr 340px; gap: 16px; margin-bottom: 16px; }
+        .sip-grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+        .table-wrapper { overflow-x: auto; }
+        @media (max-width: 1080px) {
+          .chart-grid { grid-template-columns: 1fr; }
+          .sip-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+          .page-container, .tab-row, .header-row { padding-left: 16px; padding-right: 16px; }
+          .header-row { flex-direction: column; align-items: stretch; gap: 12px; }
+          .search-row { flex-direction: column; align-items: stretch; }
+          .search-row .inp, .search-row .lookup-btn { width: 100%; }
+          .preset-group { width: 100%; justify-content: flex-start; }
+          .stat-grid { flex-direction: column; }
+          .tab-btn { flex: 1 1 auto; text-align: center; padding: 10px 14px; }
+          .card { padding: 16px; }
+          th, td { padding: 8px 10px; font-size: 11px; }
+        }
+        @media (max-width: 600px) {
+          .tab-btn { font-size: 11px; padding: 9px 10px; }
+          .preset-btn { font-size: 11px; padding: 8px 10px; }
+          .lookup-btn { padding: 12px 16px; }
+          .chart-grid { gap: 12px; }
+          .sip-grid { gap: 16px; }
+          .card { border-radius: 12px; }
+        }
       `}</style>
  
       {/* Header */}
-      <div style={{ borderBottom: "1px solid #1f2937", padding: "16px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="header-row">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#00d4aa", boxShadow: "0 0 8px #00d4aa" }} />
           <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 2, color: "#f0f0f0" }}>PORTFOLIO OPTIMIZER</span>
@@ -221,21 +256,20 @@ export default function App() {
       </div>
  
       {/* Tabs */}
-      <div style={{ padding: "0 32px", borderBottom: "1px solid #1f2937", display: "flex", gap: 4 }}>
+      <div className="tab-row">
         {[["dashboard","Dashboard"],["screener","Screener"],["swing","Swing Signals"],["sip","SIP Calc"]].map(([id, label]) => (
           <button key={id} className={`tab-btn ${tab===id?"active":""}`}
-            style={{ padding: "14px 20px" }}
             onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
  
-      <div style={{ padding: "24px 32px", maxWidth: 1400, margin: "0 auto" }}>
+      <div className="page-container">
  
         {/* ── DASHBOARD TAB ── */}
         {tab === "dashboard" && (
           <div>
             {/* Search bar */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 24, alignItems: "center" }}>
+            <div className="search-row">
               <input className="inp" value={ticker} onChange={e => setTicker(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && lookupStock()}
                 placeholder="RELIANCE.NS · TCS.NS · AAPL · INFY.NS"
@@ -243,7 +277,7 @@ export default function App() {
               <button className="lookup-btn" onClick={() => lookupStock()} disabled={loading}>
                 {loading ? "LOADING..." : "ANALYSE"}
               </button>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              <div className="preset-group">
                 {["RELIANCE.NS","TCS.NS","HDFCBANK.NS","AAPL","NIFTY50.NS"].map(t => (
                   <button key={t} className="preset-btn" onClick={() => { setTicker(t); lookupStock(t); }}>{t.replace(".NS","")}</button>
                 ))}
@@ -255,7 +289,7 @@ export default function App() {
             {stockData && (
               <div>
                 {/* Top stat cards */}
-                <div style={{ display:"flex", gap:12, marginBottom:20, flexWrap:"wrap" }}>
+                <div className="stat-grid">
                   <StatCard label="Current Price"
                     value={stockData.currency === "INR" ? `₹${stockData.current_price?.toLocaleString("en-IN")}` : `$${stockData.current_price}`}
                     sub={stockData.name} accent="#f9fafb" />
@@ -273,7 +307,7 @@ export default function App() {
                 </div>
  
                 {/* Charts row */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 340px", gap:16, marginBottom:16 }}>
+                <div className="chart-grid" style={{ marginBottom: 16 }}>
  
                   {/* Price range bar */}
                   <div className="card">
@@ -522,7 +556,7 @@ function SIPCalc() {
  
   return (
     <div>
-      <div style={{ display:"grid", gridTemplateColumns:"360px 1fr", gap:20 }}>
+      <div className="sip-grid">
         <div className="card">
           <div style={{ fontSize:11, color:"#6b7280", letterSpacing:1, marginBottom:20, textTransform:"uppercase" }}>SIP Parameters</div>
           {[
