@@ -6,5 +6,9 @@ yfinance
 PyPortfolioOpt
 pydantic
 python-dotenv
+requests
 cachetools
 packaging
+httpx
+transformers
+torch

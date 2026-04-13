@@ -4,14 +4,31 @@ import SignalBadge from "./SignalBadge";
 import PriceSparkline from "./PriceSparkline";
 import { fmt, fmtMktCap } from "../utils";
 
-export default function StockDashboard({ stockData, priceHistory, sw, radarData }) {
+export default function StockDashboard({ stockData, priceHistory, sw, radarData, onSwitchExchange }) {
   if (!stockData) return null;
+  const switchable = stockData.ticker?.endsWith(".NS") || stockData.ticker?.endsWith(".BO");
+  const otherTicker = stockData.ticker?.endsWith(".NS")
+    ? stockData.ticker.replace(/\.NS$/, ".BO")
+    : stockData.ticker?.endsWith(".BO")
+    ? stockData.ticker.replace(/\.BO$/, ".NS")
+    : null;
   const rangePct = stockData["52w_high"] && stockData["52w_low"]
     ? Math.round(((stockData.current_price - stockData["52w_low"]) / ((stockData["52w_high"] - stockData["52w_low"]) || 1)) * 100)
     : 0;
 
   return (
     <section className="dashboard-panel">
+      {switchable && otherTicker && (
+        <div className="exchange-toggle-row">
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => onSwitchExchange(otherTicker)}
+          >
+            Switch to {otherTicker.endsWith(".NS") ? "NSE" : "BSE"} ({otherTicker})
+          </button>
+        </div>
+      )}
       <div className="stats-grid">
         <StatCard
           label="Current Price"

@@ -6,6 +6,8 @@ import SearchPanel from "./components/SearchPanel";
 import StockDashboard from "./components/StockDashboard";
 import ScreenerPanel from "./components/ScreenerPanel";
 import SwingPanel from "./components/SwingPanel";
+import FolioPanel from "./components/FolioPanel";
+import AdvisorPanel from "./components/AdvisorPanel";
 import SIPCalc from "./components/SIPCalc";
 
 const DEFAULT_TICKER = "RELIANCE.NS";
@@ -129,7 +131,13 @@ export default function App() {
               presetSymbols={["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "AAPL", "NIFTY50.NS"]}
               onPresetClick={(symbol) => { setTicker(symbol); lookupStock(symbol); }}
             />
-            <StockDashboard stockData={stockData} priceHistory={priceHistory} sw={sw} radarData={radarData} />
+            <StockDashboard
+              stockData={stockData}
+              priceHistory={priceHistory}
+              sw={sw}
+              radarData={radarData}
+              onSwitchExchange={(symbol) => { setTicker(symbol); lookupStock(symbol); }}
+            />
           </>
         )}
 
@@ -149,6 +157,14 @@ export default function App() {
             selectedPreset={selectedPreset}
             setSelectedPreset={setSelectedPreset}
             batchLoading={batchLoading}
+            onSelectSymbol={(symbol) => { setTab("dashboard"); setTicker(symbol); lookupStock(symbol); }}
+          />
+        )}
+
+        {tab === "folio" && <FolioPanel />}
+
+        {tab === "advisor" && (
+          <AdvisorPanel
             onSelectSymbol={(symbol) => { setTab("dashboard"); setTicker(symbol); lookupStock(symbol); }}
           />
         )}

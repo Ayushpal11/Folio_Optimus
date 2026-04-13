@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -9,31 +9,63 @@ import pandas as pd
 import yfinance as yf
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pypfopt import EfficientFrontier, risk_models, expected_returns
 
-from data.fetcher import normalize_symbol, fetch_stock_meta, fetch_returns, compute_annualised_stats, fetch_price_history
+from data.fetcher import (
+    normalize_symbol,
+    fetch_stock_meta,
+    fetch_returns,
+    compute_annualised_stats,
+    fetch_price_history,
+    fetch_analyst_data,
+    search_stocks,
+    analyze_folio,
+)
+from data.recommendation import (
+    get_recommendation_pool,
+    filter_stocks_by_risk,
+    get_sector_tickers,
+    build_recommendations,
+)
+from app.upstox.routes import router as upstox_router
 
 import uvicorn
 
-app = FastAPI(title="Portfolio Optimizer API")
+app = FastAPI(title="Portfolio Optimizer API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://folio-optimus.vercel.app",
-    ],
+    allow_origins=["*"],  # tighten to your frontend origin for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(upstox_router, prefix="/api/upstox")
+
 class OptimizeRequest(BaseModel):
     tickers: List[str]
     capital: float
     risk_tolerance: str = "medium"  # low / medium / high
+
+class BatchRequest(BaseModel):
+    tickers: List[str]
+
+class HoldingItem(BaseModel):
+    ticker: str
+    qty: float
+    avg_price: float
+    exchange: str = "NSE"
+
+class FolioRequest(BaseModel):
+    holdings: List[HoldingItem]
+
+class RecommendationRequest(BaseModel):
+    risk: str  # "safe", "moderate", "aggressive"
+    duration: str  # "short", "mid", "long"
+    sector: str = "All"  # Optional sector filter
+    capital: float = None  # Optional capital amount
 
 @app.get("/")
 def root():
@@ -41,7 +73,37 @@ def root():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "2.0.0"}
+
+@app.get("/api/search")
+def search(q: str):
+    """
+    Fuzzy search by stock symbol or company name.
+    Example: /api/search?q=reliance
+    """
+    if len(q.strip()) < 1:
+        return {"results": []}
+    return {"results": search_stocks(q)}
+
+@app.get("/api/analyst/{ticker}")
+def get_analyst_data(ticker: str):
+    try:
+        return fetch_analyst_data(ticker)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.post("/api/folio/analyze")
+def analyze_portfolio(req: FolioRequest):
+    if not req.holdings:
+        raise HTTPException(status_code=400, detail="No holdings provided")
+    try:
+        return analyze_folio([h.dict() for h in req.holdings])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 @app.post("/api/optimize")
 def optimize(req: OptimizeRequest):
@@ -128,6 +190,96 @@ def get_batch_stats(req: dict):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Batch fetch failed: {str(e)}")
+
+@app.post("/api/recommend")
+def get_recommendations(req: RecommendationRequest):
+    """
+    Get AI-powered stock recommendations based on risk profile.
+    Pulls live stock universe from NSE index CSVs.
+    
+    Request:
+    {
+      "risk": "safe|moderate|aggressive",
+      "duration": "short|mid|long",
+      "sector": "All|IT|Banking|Pharma|etc",
+      "capital": optional number
+    }
+    
+    Returns: List of recommended stocks with signals, targets, stoploss
+    """
+    try:
+        # Validate inputs
+        if req.risk not in ["safe", "moderate", "aggressive"]:
+            raise ValueError("Risk must be 'safe', 'moderate', or 'aggressive'")
+        if req.duration not in ["short", "mid", "long"]:
+            raise ValueError("Duration must be 'short', 'mid', or 'long'")
+
+        # Get live stock pool from NSE index based on risk profile
+        stock_pool = get_recommendation_pool(req.risk)
+        
+        if not stock_pool:
+            raise ValueError(f"Unable to fetch stocks for risk profile '{req.risk}' from NSE")
+
+        # Apply sector filter if specified (using live pool data)
+        if req.sector and req.sector != "All":
+            sector_tickers = get_sector_tickers(req.sector, stock_pool)
+            stock_pool = [s for s in stock_pool if s["ticker"] in sector_tickers]
+
+            if not stock_pool:
+                raise ValueError(f"No stocks found in sector '{req.sector}' for risk profile '{req.risk}'")
+
+        # Fetch detailed data for all stocks in pool (limit to 100 to avoid timeout)
+        tickers_to_fetch = [s["ticker"] for s in stock_pool[:100]]
+        returns, valid_tickers, invalid_tickers = fetch_returns(tickers_to_fetch, period="1y")
+        
+        if not valid_tickers:
+            raise ValueError("Unable to fetch data for stocks in this category")
+
+        stats = compute_annualised_stats(returns)
+
+        # Build stock data dict with enriched data
+        stock_data_dict = {}
+        for ticker in valid_tickers:
+            try:
+                meta = fetch_stock_meta(ticker)
+                stock_data_dict[ticker] = {
+                    **meta,
+                    "annualised_return": stats["annualised_return"].get(ticker, 0),
+                    "annualised_volatility": stats["annualised_volatility"].get(ticker, 0.2),
+                }
+            except Exception:
+                # Skip stocks where we can't fetch meta data
+                continue
+
+        # Filter by risk criteria and build recommendations
+        filtered_tickers = filter_stocks_by_risk(stock_data_dict, req.risk)
+        recommendations = build_recommendations(
+            filtered_tickers,
+            stock_data_dict,
+            req.risk,
+            req.duration,
+            stock_pool=stock_pool,
+            sector=req.sector if req.sector != "All" else None,
+            capital=req.capital,
+            limit=8,
+        )
+
+        return {
+            "risk_profile": req.risk,
+            "duration": req.duration,
+            "sector": req.sector or "All",
+            "pool_size": len(stock_pool),
+            "fetched": len(valid_tickers),
+            "recommendations": recommendations,
+            "count": len(recommendations),
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=502, detail=f"Recommendation engine failed: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))

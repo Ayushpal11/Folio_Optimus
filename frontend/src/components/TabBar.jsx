@@ -2,6 +2,8 @@ const tabs = [
   ["dashboard", "Dashboard"],
   ["screener", "Screener"],
   ["swing", "Swing Signals"],
+  ["folio", "My Folio"],
+  ["advisor", "🤖 AI Advisor"],
   ["sip", "SIP Calc"],
 ];
 
