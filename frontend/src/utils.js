@@ -1,4 +1,4 @@
-export const PROD_BACKEND_URL = "https://folio-optimus.onrender.com";
+export const PROD_BACKEND_URL = "https://folio-optimus-1.onrender.com";
 export const API = import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" ? PROD_BACKEND_URL : "http://localhost:8000");
 
 export const INDEX_PRESETS = {
