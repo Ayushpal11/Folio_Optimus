@@ -4,6 +4,8 @@ const tabs = [
   ["swing", "Swing Signals"],
   ["folio", "My Folio"],
   ["advisor", "🤖 AI Advisor"],
+  ["optimizer", "📊 Optimizer"],
+  ["backtest", "🔙 Backtest"],
   ["sip", "SIP Calc"],
 ];
 

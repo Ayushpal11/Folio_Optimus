@@ -10,6 +10,8 @@ A comprehensive full-stack portfolio optimization tool with real-time stock anal
 - **Stock Dashboard**: Real-time stock analysis with price charts, 52-week range, P/E ratio, market cap, and volatility metrics
 - **Stock Screener**: Compare multiple stocks with return/volatility charts, Sharpe ratios, and ranking tables
 - **Swing Signals**: AI-powered buy/sell/hold signals with confidence scores and stop-loss targets
+- **AI Advisor**: Sophisticated 4-layer recommendation engine combining news sentiment, macro trends, fundamental health, and technical momentum with capital allocation projections
+- **Portfolio Optimizer**: Markowitz efficient frontier optimization with add/remove stock controls, ticker autocomplete, and capital allocation outputs
 - **Folio Analyzer**: Analyze your existing portfolio holdings with per-stock guidance (buy/sell/hold) and overall portfolio health assessment
 - **SIP Calculator**: Interactive systematic investment plan calculator with growth projections
 - **Stock Search**: Fuzzy search by ticker or company name with autocomplete suggestions
@@ -20,11 +22,12 @@ A comprehensive full-stack portfolio optimization tool with real-time stock anal
 - **Real-time Data**: Live stock prices and historical data via yfinance and Upstox
 
 ## 🛠 Tech Stack
-- **Backend**: FastAPI, Python, yfinance, NumPy, Pandas, PyPortfolioOpt, Upstox API
+- **Backend**: FastAPI, Python, yfinance, NumPy, Pandas, PyPortfolioOpt, Transformers (FinBERT), Upstox API
 - **Frontend**: React, Vite, Recharts, CSS Variables
 - **Deployment**: Render (Backend), Vercel (Frontend)
-- **Data Sources**: Yahoo Finance (yfinance library), Upstox API (Indian stocks)
-- **Features**: Fuzzy search, portfolio analysis, responsive design, dark/light themes, real-time market data
+- **Data Sources**: Yahoo Finance (yfinance library), Upstox API (Indian stocks), Marketaux (news sentiment)
+- **ML Models**: FinBERT for financial sentiment analysis, dynamic NSE index fetching
+- **Features**: AI recommendations, capital projections, fuzzy search, portfolio analysis, responsive design, dark/light themes, real-time market data
 
 ## 📁 Project Structure
 ```
@@ -55,7 +58,8 @@ Portfolio_Optimizer/
 │           ├── StockDashboard.jsx # Stock analysis cards and charts
 │           ├── ScreenerPanel.jsx # Multi-stock comparison
 │           ├── SwingPanel.jsx # Swing signal cards
-│           ├── FolioPanel.jsx # Portfolio holdings analyzer
+           ├── AdvisorPanel.jsx # AI stock recommendations with capital projections
+           ├── FolioPanel.jsx # Portfolio holdings analyzer with sample data
 │           ├── SIPCalc.jsx    # SIP calculator with charts
 │           ├── StatCard.jsx   # Metric display cards
 │           ├── PriceSparkline.jsx # Price history sparkline
@@ -71,7 +75,8 @@ Portfolio_Optimizer/
   - `/api/analyst/{ticker}` - Analyst recommendations and data
   - `/api/batch-stats` - Multi-stock analysis
   - `/api/folio/analyze` - Portfolio holdings analysis with per-stock guidance
-  - `/api/optimize` - Portfolio optimization (stub for future AI integration)
+  - `/api/recommend` - AI-powered stock recommendations with 4-layer signal stack and capital projections
+  - `/api/optimize` - Portfolio optimization with add/remove ticker workflow and autocomplete search
   - `/api/upstox/ltp/{symbol}` - Real-time LTP data for Indian stocks via Upstox
   - `/api/upstox/history/{symbol}` - Historical OHLC data via Upstox API
 - ✅ **Frontend Complete**: Fully responsive React app deployed on Vercel
@@ -84,7 +89,9 @@ Portfolio_Optimizer/
 - ✅ **Deployment**: Both backend and frontend deployed and working
 - ✅ **Data Integration**: Real-time stock data via yfinance and Upstox API
 - ✅ **Upstox Integration**: Live Indian stock data with LTP and historical support
-- 🔄 **Future Plans**: Enhanced Upstox integration, AI-powered portfolio optimization, user accounts, watchlists
+- ✅ **Portfolio Optimizer**: Add/remove stock workflow with dashboard-style autocomplete search and efficient frontier optimization
+- ✅ **AI Advisor**: 4-layer recommendation engine with capital allocation and projected returns
+- 🔄 **Future Plans**: user accounts, watchlists, performance tracking, improved backtest/optimizer charts
 
 ## 🚀 Setup & Development
 
@@ -137,9 +144,11 @@ Portfolio_Optimizer/
 1. **Stock Analysis**: Enter a ticker (e.g., `AAPL`, `RELIANCE.NS`) or search by company name in the search bar
 2. **Screener**: Select preset indices to compare multiple stocks
 3. **Swing Signals**: View AI-generated trading signals with confidence levels
-4. **Folio Analyzer**: Input your stock holdings with quantities and purchase prices to get per-stock buy/sell/hold guidance and overall portfolio health assessment
-5. **SIP Calculator**: Calculate potential returns from systematic investments
-6. **Theme Toggle**: Switch between dark and light modes
+4. **AI Advisor**: Input total capital and select a sector or theme to get AI-generated stock recommendations with capital allocation, projected values, and expected gains
+5. **Portfolio Optimizer**: Add or remove stocks from the optimizer list using autocomplete suggestions, then click Optimize Portfolio for Markowitz optimization results
+6. **Folio Analyzer**: View sample portfolio holdings with per-stock guidance, or add hidden local overrides via `/.default_holdings_hidden.json`
+7. **SIP Calculator**: Calculate potential returns from systematic investments
+7. **Theme Toggle**: Switch between dark and light modes
 
 ### API Endpoints
 - `GET /api/search?q={query}` - Fuzzy search stocks by name or ticker
@@ -150,7 +159,7 @@ Portfolio_Optimizer/
 - `GET /api/upstox/ltp/{symbol}` - Get real-time LTP for Indian stocks
 - `GET /api/upstox/history/{symbol}?interval={interval}&from_date={date}&to_date={date}` - Get historical data from Upstox
 - `POST /api/folio/analyze` - Analyze portfolio holdings
-- `POST /api/optimize` - Portfolio optimization (coming soon)
+- `POST /api/optimize` - Portfolio optimization with add/remove ticker flow and autocomplete search
 
 ## � AI Advisor (4-Layer Signal Stack)
 
@@ -180,13 +189,23 @@ The AI Advisor uses a sophisticated 4-layer intelligence system to recommend sto
 - Short-term momentum (20-day returns)
 - RSI and technical indicators
 
+### 💰 Capital Projections
+
+For each recommended stock, the AI Advisor calculates:
+- **Allocated Capital**: Divides total capital equally across recommendations
+- **Target Price**: Based on sector potential and technical levels
+- **Projected Value**: (Allocated Capital × Target Price) / Current Price
+- **Expected Gain**: Projected Value - Allocated Capital
+- **Gain %**: Expected Gain / Allocated Capital × 100
+
 ### 🎯 How It Works
 
 1. **Dynamic Universe**: Fetches live stock lists from NSE indices (50-500 stocks)
 2. **Multi-Layer Scoring**: Each stock scored across all 4 intelligence layers
 3. **Risk-Adjusted**: Safe/Moderate/Aggressive profiles filter and weight scores
 4. **Sector Focus**: Optional sector filtering using NSE classifications
-5. **Top Picks**: Returns 8 best-scoring stocks with signals and targets
+5. **Capital Allocation**: Intelligent allocation across recommendations with projected returns
+6. **Top Picks**: Returns 8 best-scoring stocks with signals, targets, and capital projections
 
 ### 🔧 Setup (Optional APIs)
 
@@ -201,6 +220,20 @@ ALPHA_VANTAGE_API_KEY=your_key_here
 ```
 
 Without API keys, the system uses local FinBERT model for sentiment analysis.
+
+### 📊 Portfolio Data
+
+**Sample Holdings**: FolioPanel displays randomized sample holdings for demonstration. To use your personal holdings:
+
+1. Create `frontend/public/.default_holdings_hidden.json` with your holdings:
+   ```json
+   [
+     {"ticker": "RELIANCE", "qty": 10, "avg_price": 2850, "exchange": "NSE"},
+     {"ticker": "INFY", "qty": 20, "avg_price": 1650, "exchange": "NSE"}
+   ]
+   ```
+2. This file is protected in `.gitignore` and won't be tracked
+3. Refresh the app to load your holdings
 
 ## 📄 License
 This project is open source and available under the [MIT License](LICENSE).

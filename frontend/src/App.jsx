@@ -8,6 +8,8 @@ import ScreenerPanel from "./components/ScreenerPanel";
 import SwingPanel from "./components/SwingPanel";
 import FolioPanel from "./components/FolioPanel";
 import AdvisorPanel from "./components/AdvisorPanel";
+import FolioOptimizer from "./components/FolioOptimizer";
+import BacktestPanel from "./components/BacktestPanel";
 import SIPCalc from "./components/SIPCalc";
 
 const DEFAULT_TICKER = "RELIANCE.NS";
@@ -168,6 +170,10 @@ export default function App() {
             onSelectSymbol={(symbol) => { setTab("dashboard"); setTicker(symbol); lookupStock(symbol); }}
           />
         )}
+
+        {tab === "optimizer" && <FolioOptimizer />}
+
+        {tab === "backtest" && <BacktestPanel />}
 
         {tab === "sip" && <SIPCalc />}
       </main>

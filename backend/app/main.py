@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -7,10 +7,11 @@ load_dotenv()
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pypfopt import EfficientFrontier, risk_models, expected_returns
+from pypfopt.discrete_allocation import DiscreteAllocation
 
 from data.fetcher import (
     normalize_symbol,
@@ -29,10 +30,15 @@ from data.recommendation import (
     build_recommendations,
 )
 from app.upstox.routes import router as upstox_router
+from app.backtest import backtest_signal, calculate_win_rate
+from app.rate_limit import limiter
 
 import uvicorn
 
 app = FastAPI(title="Portfolio Optimizer API", version="2.0.0")
+
+# Add rate limiter to app
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +72,13 @@ class RecommendationRequest(BaseModel):
     duration: str  # "short", "mid", "long"
     sector: str = "All"  # Optional sector filter
     capital: float = None  # Optional capital amount
+
+class BacktestRequest(BaseModel):
+    signal: str  # "BUY", "SELL", "HOLD"
+    entry_date: str  # "YYYY-MM-DD"
+    target_price: float
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
 
 @app.get("/")
 def root():
@@ -106,17 +119,104 @@ def analyze_portfolio(req: FolioRequest):
         raise HTTPException(status_code=502, detail=str(e))
 
 @app.post("/api/optimize")
-def optimize(req: OptimizeRequest):
-    # Stub — real logic comes in Phase 3
-    return {
-        "tickers": req.tickers,
-        "capital": req.capital,
-        "weights": {t: round(1/len(req.tickers), 4) for t in req.tickers},
-        "expected_return": 0.12,
-        "volatility": 0.18,
-        "sharpe_ratio": 0.67,
-        "ai_advice": "Mock response — AI integration coming in Phase 4"
+async def optimize(req: OptimizeRequest):
+    """
+    Markowitz portfolio optimization using Efficient Frontier.
+    
+    Request:
+    {
+      "tickers": ["AAPL", "MSFT", "GOOGL"],
+      "capital": 100000,
+      "risk_tolerance": "low" | "medium" | "high"
     }
+    
+    Returns: Optimized weights, discrete allocation (share counts), performance metrics
+    """
+    if not req.tickers:
+        raise HTTPException(status_code=400, detail="No tickers provided")
+    
+    if req.capital <= 0:
+        raise HTTPException(status_code=400, detail="Capital must be positive")
+    
+    try:
+        # Normalize tickers
+        tickers_normalized = [normalize_symbol(t) for t in req.tickers]
+        
+        # 1. Fetch 1-year daily closes
+        prices = yf.download(tickers_normalized, period="1y")["Close"].dropna()
+        
+        if prices.empty or len(prices) < 30:
+            raise ValueError("Insufficient price history for optimization")
+        
+        # Handle single ticker (yfinance returns Series instead of DataFrame)
+        if isinstance(prices, pd.Series):
+            prices = prices.to_frame()
+        
+        # 2. Compute expected returns and covariance matrix
+        mu = expected_returns.mean_historical_return(prices)
+        S = risk_models.sample_cov(prices)
+        
+        # 3. Run Markowitz optimization based on risk tolerance
+        ef = EfficientFrontier(mu, S)
+        
+        if req.risk_tolerance.lower() == "low":
+            # Minimize volatility
+            ef.min_volatility()
+        elif req.risk_tolerance.lower() == "high":
+            # Maximize Sharpe ratio for aggressive growth
+            ef.max_sharpe()
+        else:
+            # Medium: Quadratic utility (balanced risk-return)
+            ef.max_quadratic_utility(risk_aversion=1.0)
+        
+        weights = ef.clean_weights()
+        perf = ef.portfolio_performance(verbose=False)  # (return, vol, sharpe)
+        
+        # 4. Discrete allocation (how many shares to buy)
+        latest_prices = prices.iloc[-1]
+        
+        # Ensure weights dict keys match latest_prices index
+        weights_aligned = {ticker: weights.get(ticker, 0) for ticker in latest_prices.index}
+        
+        da = DiscreteAllocation(weights_aligned, latest_prices, total_portfolio_value=req.capital)
+        allocation, leftover = da.greedy_portfolio()
+        
+        # Calculate total value and allocation details
+        allocation_details = []
+        total_allocated = 0
+        
+        for ticker, shares in allocation.items():
+            price = latest_prices.get(ticker, 0)
+            value = shares * price
+            total_allocated += value
+            allocation_details.append({
+                "ticker": ticker,
+                "shares": shares,
+                "price": round(float(price), 2),
+                "value": round(float(value), 2),
+                "weight": round(weights_aligned.get(ticker, 0) * 100, 2)
+            })
+        
+        return {
+            "optimization_status": "success",
+            "risk_tolerance": req.risk_tolerance,
+            "weights": {k: round(v, 4) for k, v in weights.items()},
+            "allocation": allocation_details,
+            "total_allocated": round(total_allocated, 2),
+            "leftover_cash": round(leftover, 2),
+            "performance": {
+                "expected_annual_return": round(perf[0], 4),
+                "annual_volatility": round(perf[1], 4),
+                "sharpe_ratio": round(perf[2], 4)
+            },
+            "input_capital": req.capital,
+            "diversification": len(allocation)
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Optimization failed: {str(e)}")
 
 @app.get("/api/stock/{ticker}")
 def get_stock_info(ticker: str):
@@ -280,6 +380,29 @@ def get_recommendations(req: RecommendationRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=502, detail=f"Recommendation engine failed: {str(e)}")
+
+@app.post("/api/backtest/{ticker}")
+@limiter.limit("10/minute")
+async def backtest(request: Request, ticker: str, req: BacktestRequest):
+    """
+    Backtest a trading signal.
+    
+    Returns P&L metrics for a historical signal.
+    """
+    try:
+        result = backtest_signal(
+            ticker=ticker,
+            signal=req.signal,
+            entry_date=req.entry_date,
+            target_price=req.target_price,
+            entry_price=req.entry_price,
+            stop_loss=req.stop_loss,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Backtest failed: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
