@@ -58,8 +58,8 @@ Portfolio_Optimizer/
 │           ├── StockDashboard.jsx # Stock analysis cards and charts
 │           ├── ScreenerPanel.jsx # Multi-stock comparison
 │           ├── SwingPanel.jsx # Swing signal cards
-           ├── AdvisorPanel.jsx # AI stock recommendations with capital projections
-           ├── FolioPanel.jsx # Portfolio holdings analyzer with sample data
+│            ├── AdvisorPanel.jsx # AI stock recommendations with capital projections
+│            ├── FolioPanel.jsx # Portfolio holdings analyzer with sample data
 │           ├── SIPCalc.jsx    # SIP calculator with charts
 │           ├── StatCard.jsx   # Metric display cards
 │           ├── PriceSparkline.jsx # Price history sparkline
@@ -240,3 +240,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 📞 Support
 For questions or issues, please open a GitHub issue or contact the maintainers.
+
+
+// Monta carla Simulation 
